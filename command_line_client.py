@@ -3,6 +3,7 @@ import asyncio
 
 URI = "ws://0.0.0.0:2087"
 
+""" usage (ls ; echo "db") | grep "db" """
 
 async def main():
     client = LSPWebSocketClient(URI)

@@ -53,3 +53,30 @@ async def lsp_server():
         yield lsp
     finally:
         await lsp.close()
+
+
+async def main():
+    lsp = LanguageServerClient()
+    try:
+        await lsp.initialize()
+        # Create an event that will be set when the program should terminate.
+        stop_event = asyncio.Event()
+
+        try:
+            # Wait for the event to be set.
+            await stop_event.wait()
+        except KeyboardInterrupt:
+            # Set the event to exit the loop upon KeyboardInterrupt.
+            stop_event.set()
+
+        # Perform any necessary cleanup.
+        await lsp.close()
+
+    except Exception as e:
+        # Handle any exceptions during initialization or runtime.
+        print(f"An error occurred: {e}")
+        await lsp.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
