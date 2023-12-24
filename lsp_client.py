@@ -27,11 +27,16 @@ from response_types import (
 )
 
 from ast_parsing import (
+    extract_code_segment,
+    find_all_method_and_function_calls,
     find_function_range,
     find_top_level_imports_ast,
     find_imports_in_function,
     filter_imports,
+    filter_locations,
+    find_node_at_position,
 )
+from utils import read_file_uri
 
 
 class EnhancedJSONEncoder(json.JSONEncoder):
@@ -188,7 +193,7 @@ async def get_relevant_modules(client, file_content, function_range, text_docume
 
 
 async def get_function_context(
-    client: LSPWebSocketClient, filename: str, function_name: str
+    client: LSPWebSocketClient, filename: str, function_name: str, depth=1
 ):
     with open(filename, "r") as file:
         file_content = file.read()
@@ -199,69 +204,37 @@ async def get_function_context(
         print("Function not found in the file.")
         sys.exit(1)
 
-    relevant_modules = await get_relevant_modules(
-        client, file_content, function_range, text_document
-    )
+    # Step 1: find all the calls inside the function.
+    calls = find_all_method_and_function_calls(file_content, function_name)
 
-    first_module = relevant_modules[1]
-    print("first_module", first_module)
-    symbols = await client.get_definition(
-        text_document=text_document,
-        position=Position(line=first_module.line, character=first_module.character),
-    )
-    print("symbols", symbols)
-    second = await client.get_definition(
-        text_document=text_document,
-        position=Position(
-            line=symbols.result[0].range.start.line,
-            character=symbols.result[0].range.start.character,
-        ),
-    )
-    print("second", second)
-    # print("relevant_modules", relevant_modules)
+    # Step 2: look up all the call definitions.
+    type_definitions = set()
+    for call in calls:
+        definition = await client.get_type_definition(
+            text_document,
+            Position(line=call.line, character=call.character),
+        )
+        if definition.result:
+            for obj_def in definition.result:
+                type_definitions.add(obj_def)
+    # filter out builtins
+    filtered_type_definitions = filter_locations(type_definitions)
+    # print("filtered_type_definitions", filtered_type_definitions)
+    nodes = [
+        find_node_at_position(read_file_uri(def_.uri), def_.range.start.line)
+        for def_ in filtered_type_definitions
+    ]
 
-    # Step 1: find all the definitions of the top level imports
-    # for module in relevant_modules:
-    #     definition = await client.get_definition(
-    #         text_document,
-    #         Position(line=module.line, character=module.character),
-    #     )
-    #     print("definition", definition)
+    # Step 3: Given all the nodes, copy the relevant text.
+    code_context = []
+    for node, def_ in zip(nodes, filtered_type_definitions):
+        code_snippet = extract_code_segment(read_file_uri(def_.uri), node)
+        # print(f"{def_}. code_snippet {code_snippet}")
+        code_context.append(
+            def_.uri + "\n------------------" + code_snippet + "------------------"
+        )
 
-    # find all the definitions of the function level imports
-    # print(filtered_modules)
-    # print(function_level_imports)
-    # Step 1: get symbols within the function
-    # symbols_in_scope = await client.get_document_symbol(filename)
-    # print("symbols_in_scope", symbols_in_scope)
-    # filter for symbols outside of the function
-
-    # ref = await client.get_references(text_document, symbol.location.range.start)
-    # if ref.result:
-    #     symbol_references.append(ref.result[0])
-    # external_symbols = filter_out_inside_function_symbols(
-    #     symbols_in_scope, filename, function_range
-    # )
-
-    # print("external_symbols", external_symbols)
-    # unique_uris = {ref.uri for ref in external_symbols}
-    # print(f"unique_uris: {unique_uris}, len: {len(unique_uris)}")
-
-    # Step 2: Find external references
-    # external_references = await client.get_references(text_document, position)
-    # print("external_references", external_references)
-    # filter out references in the same file
-    # external_references = [
-    #     ref for ref in external_references.result if ref.uri != f"file://{filename}"
-    # ]
-    # print("external_references", external_references)
-    # Step 3: Extract relevant code blocks
-    # ...
-
-    # Step 4: Combine the extracted code into a single context block
-    # ...
-    combined_context = ""
-    return combined_context
+    return code_context
 
 
 def filter_out_inside_function_symbols(
@@ -317,6 +290,14 @@ async def main(filename, function_name):
         client = LSPWebSocketClient(URI)
         await client.connect()
 
+        src = (
+            "file:///Users/morgangriffiths/code/openai/torchflow/trainflow/datasets.py"
+        )
+        # res = await client.get_type_definition(
+        #     text_document=TextDocument(uri=src),
+        #     position=Position(line=1554, character=19),
+        # )
+        # print("res", res)
         if not os.path.exists(filename):
             print("File does not exist.")
             sys.exit(1)
@@ -325,7 +306,7 @@ async def main(filename, function_name):
             context = await get_function_context(client, filename, function_name)
         else:
             print("Function name not provided.")
-            # handle whole file
+        # handle whole file
         # await client.send_message(
         #     {
         #         "jsonrpc": "2.0",
@@ -351,4 +332,11 @@ if __name__ == "__main__":
 
     user_input = sys.argv[1]
     filename, function_name = user_input.split("::")
+
+    # Testing
+    # filename = (
+    #     "/Users/morgangriffiths/code/openai/torchflow/torchflow/layouts/pipe_layout.py"
+    # )
+    # node = find_node_at_position(filename, 723)
+    # print(f"{node}, {dir(node)}, {node.name}")
     asyncio.run(main(filename, function_name))
