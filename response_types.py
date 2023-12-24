@@ -1,6 +1,19 @@
 from typing import List, Optional, Any, Union
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 from enum import Enum
+
+
+class HashableBaseModel(BaseModel):
+    def __hash__(self):
+        return hash((self.__class__,) + tuple(self.__fields__.values()))
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            for field in self.__fields__:  # type: ignore
+                if getattr(self, field) != getattr(other, field):
+                    return False
+            return True
+        return False
 
 
 class SymbolKind(Enum):
@@ -32,26 +45,19 @@ class SymbolKind(Enum):
     TypeParameter = 26
 
 
-class Position(BaseModel):
+class Position(HashableBaseModel):
     line: int
     character: int
 
 
-class Range(BaseModel):
+class Range(HashableBaseModel):
     start: Position
     end: Position
 
 
-class Location(BaseModel):
+class Location(HashableBaseModel):
     uri: str
     range: Range
-
-
-class LocationLink(BaseModel):
-    originSelectionRange: Optional[Range]
-    targetUri: str
-    targetRange: Range
-    targetSelectionRange: Range
 
 
 class SymbolTag(BaseModel):
@@ -78,11 +84,11 @@ class DefinitionResponse(BaseModel):
 
 
 class GoToDeclarationResponse(BaseModel):
-    result: Optional[List[Union[Location, LocationLink]]]
+    result: Optional[List[Location]]
 
 
 class GoToDefinitionResponse(BaseModel):
-    result: Optional[List[Union[Location, LocationLink]]]
+    result: Optional[List[Location]]
 
 
 class PrepareCallHierarchyResponse(BaseModel):
@@ -133,7 +139,7 @@ class ReferenceParams(BaseModel):
 
 
 class GoToImplementationResponse(BaseModel):
-    result: Optional[List[Union[Location, LocationLink]]]
+    result: Optional[List[Location]]
 
 
 class FindReferencesResponse(BaseModel):
