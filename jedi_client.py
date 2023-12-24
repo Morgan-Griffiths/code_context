@@ -26,7 +26,7 @@ class LanguageServerClient:
                 "params": {
                     "capabilities": {},
                     "workspaceFolders": None,
-                    "rootUri": "file:///Users/morgangriffiths/code/code_context/tests",
+                    "rootUri": "file:///Users/morgangriffiths/code/openai",
                     "initializationOptions": {},
                 },
             }
