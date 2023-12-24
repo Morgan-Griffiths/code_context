@@ -2,13 +2,20 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 import subprocess
+import sys
+from typing import Optional
 import websockets
 import os
 
 
 class LanguageServerClient:
-    def __init__(self):
+    def __init__(self, root_dir: Optional[str]):
         self.jedi_server_process = None
+        self.root_dir = (
+            root_dir
+            if root_dir
+            else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
 
     async def initialize(self):
         self.jedi_server_process = subprocess.Popen(
@@ -26,7 +33,7 @@ class LanguageServerClient:
                 "params": {
                     "capabilities": {},
                     "workspaceFolders": None,
-                    "rootUri": "file:///Users/morgangriffiths/code/openai",
+                    "rootUri": f"file://{self.root_dir}",
                     "initializationOptions": {},
                 },
             }
@@ -76,4 +83,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    root_dir = sys.argv[1] if len(sys.argv) > 1 else None
+    asyncio.run(main(root_dir))
