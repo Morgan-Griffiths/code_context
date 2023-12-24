@@ -4,6 +4,8 @@ from enum import Enum
 
 
 class HashableBaseModel(BaseModel):
+    """Base class for pydantic models that can be hashed and compared"""
+
     def __hash__(self):
         return hash((self.__class__,) + tuple(self.__fields__.values()))
 
@@ -14,6 +16,27 @@ class HashableBaseModel(BaseModel):
                     return False
             return True
         return False
+
+
+##########################################
+######### AST PARSING TYPES ##############
+##########################################
+class ImportInfo(HashableBaseModel):
+    file_path: str
+    module_name: Optional[str]
+    line: int
+    character: int
+
+
+class CallInfo(HashableBaseModel):
+    function_name: str
+    line: int
+    character: int
+
+
+##########################################
+######### LSP CLIENT TYPES ###############
+##########################################
 
 
 class SymbolKind(Enum):

@@ -1,13 +1,9 @@
 import asyncio
-from enum import Enum
 from typing import Optional
 import websockets
 import json
 import os
 import sys
-import time
-import subprocess
-from pydantic import BaseModel
 import uuid
 from response_types import (
     DocumentSymbol,
@@ -30,22 +26,10 @@ from ast_parsing import (
     extract_code_segment,
     find_all_method_and_function_calls,
     find_function_range,
-    find_top_level_imports_ast,
-    find_imports_in_function,
-    filter_imports,
     filter_locations,
     find_node_at_position,
 )
-from utils import read_file_uri
-
-
-class EnhancedJSONEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, Enum):
-            return o.value  # Convert Enum to its value
-        if isinstance(o, BaseModel):
-            return o.dict(by_alias=True)
-        return super().default(o)
+from utils import read_file_uri, EnhancedJSONEncoder
 
 
 class LSPWebSocketClient:
@@ -79,21 +63,6 @@ class LSPWebSocketClient:
 
     async def close(self):
         await self.connection.close()
-
-    async def find_function_definition(self, filename: str, function_name: str):
-        if not os.path.exists(filename):
-            print("File does not exist.")
-            return
-        if self.connection is None:
-            print("Not connected to server.")
-            return
-        position = find_function_position(filename, function_name)
-        if position is None:
-            print("Function not found in the file.")
-            return
-        text_document = TextDocument(uri=f"file://{filename}")
-        response = await self.get_definition(text_document, position)
-        return response
 
     async def go_to_declaration(self, text_document: TextDocument, position: Position):
         response = await self.send_request(
@@ -160,38 +129,6 @@ class LSPWebSocketClient:
         return response
 
 
-async def get_function_range(
-    client: LSPWebSocketClient, filename: str, function_name: str
-) -> Optional[DocumentSymbol]:
-    symbols_in_scope = await client.get_document_symbol(filename)
-    for symbol in symbols_in_scope:
-        if symbol.name == function_name:
-            print("symbol", symbol)
-    return None
-
-
-async def get_relevant_modules(client, file_content, function_range, text_document):
-    function_level_imports = find_imports_in_function(file_content, function_name)
-    top_level_imports = find_top_level_imports_ast(file_content)
-    filtered_modules = filter_imports(top_level_imports)
-    relevant_modules = []
-    for tl_import in filtered_modules:
-        refs = await client.get_references(
-            text_document,
-            Position(line=tl_import.line, character=tl_import.character + 1),
-        )
-        # store refs that are referenced inside the function
-        if refs.result:
-            for r in refs.result:
-                if (
-                    r.range.start.line >= function_range.start.line
-                    and r.range.end.line <= function_range.end.line
-                ):
-                    relevant_modules.append(tl_import)
-                    break
-    return relevant_modules + function_level_imports
-
-
 async def get_function_context(
     client: LSPWebSocketClient, filename: str, function_name: str, depth=1
 ):
@@ -237,91 +174,26 @@ async def get_function_context(
     return code_context
 
 
-def filter_out_inside_function_symbols(
-    symbols: list[DocumentSymbol], filename: str, function_range: Range
-) -> list[Location]:
-    external_symbols = []
-    for symbol in symbols:
-        if symbol.location.uri != f"file://{filename}":
-            print("symbol.location", symbol.location.uri)
-        if (
-            symbol.location.uri != f"file://{filename}"
-            and ".pyenv" not in symbol.location.uri
-            and ".virtualenvs" not in symbol.location.uri
-        ):
-            external_symbols.append(symbol.location)
-        elif (
-            symbol.location.range.end.line < function_range.start.line
-            or symbol.location.range.start.line > function_range.end.line
-        ):
-            external_symbols.append(symbol.location)
-    return external_symbols
-    # return [
-    #     symbol
-    #     for symbol in symbol_refs
-    #     if symbol.location.uri != f"file://{filename}"
-    #     and ".pyenv" not in symbol.location.uri
-    #     and ".virtualenvs" not in symbol.location.uri
-    #     and (
-    #         symbol.location.range.end.line < function_range.start.line
-    #         or symbol.location.range.start.line > function_range.end.line
-    #     )  # defined outside of the function
-    # ]
-
-
-def find_function_position(filename, function_name) -> Optional[Position]:
-    with open(filename, "r") as file:
-        for line_num, line in enumerate(file, start=1):
-            if f"def {function_name}(" in line:
-                return Position(
-                    line=line_num - 1,
-                    character=line.find(f"def {function_name}") + 4,
-                )
-    return None
-
-
 URI = "ws://0.0.0.0:2087"
 
 
-# Example usage
 async def main(filename, function_name):
-    # Instantiate the lsp client
     try:
+        # Instantiate the lsp client
         client = LSPWebSocketClient(URI)
         await client.connect()
 
-        src = (
-            "file:///Users/morgangriffiths/code/openai/torchflow/trainflow/datasets.py"
-        )
-        # res = await client.get_type_definition(
-        #     text_document=TextDocument(uri=src),
-        #     position=Position(line=1554, character=19),
-        # )
-        # print("res", res)
         if not os.path.exists(filename):
             print("File does not exist.")
             sys.exit(1)
         if function_name:
-            # handle function
             context = await get_function_context(client, filename, function_name)
+            # save to file
+            with open("code_context.txt", "w") as file:
+                file.write("\n\n".join(context))
+
         else:
             print("Function name not provided.")
-        # handle whole file
-        # await client.send_message(
-        #     {
-        #         "jsonrpc": "2.0",
-        #         "id": 2,
-        #         "method": "textDocument/typeDefinition",
-        #         "params": {
-        #             "textDocument": {
-        #                 "uri": "file:///Users/morgangriffiths/code/code_context/tests/sample.py"
-        #             },
-        #             "position": {"line": 1, "character": 14},
-        #         },
-        #     }
-        # )
-        # response = await client.receive_message()
-        # print("response", response)
     finally:
         await client.close()
 
@@ -332,6 +204,7 @@ if __name__ == "__main__":
 
     user_input = sys.argv[1]
     filename, function_name = user_input.split("::")
+    asyncio.run(main(filename, function_name))
 
     # Testing
     # filename = (
@@ -339,4 +212,3 @@ if __name__ == "__main__":
     # )
     # node = find_node_at_position(filename, 723)
     # print(f"{node}, {dir(node)}, {node.name}")
-    asyncio.run(main(filename, function_name))

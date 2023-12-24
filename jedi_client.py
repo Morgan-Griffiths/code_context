@@ -34,7 +34,6 @@ class LanguageServerClient:
             return json.loads(await websocket.recv())
 
     async def close(self):
-        # await self.shutdown_language_server()
         # Terminate the process
         self.jedi_server_process.terminate()
 
@@ -43,8 +42,6 @@ class LanguageServerClient:
 
 
 # language server constructor
-
-
 @asynccontextmanager
 async def lsp_server():
     lsp = LanguageServerClient()

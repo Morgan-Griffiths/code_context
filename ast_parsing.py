@@ -1,33 +1,7 @@
 import ast
 from typing import Optional
-from pydantic import BaseModel
-from response_types import Location, Range, Position
+from response_types import CallInfo, ImportInfo, Location, Range, Position
 import importlib.util
-
-
-class ImportInfo(BaseModel):
-    file_path: str
-    module_name: Optional[str]
-    line: int
-    character: int
-
-
-class CallInfo(BaseModel):
-    function_name: str
-    line: int
-    character: int
-
-    def __hash__(self):
-        return hash((self.function_name, self.line, self.character))
-
-    def __eq__(self, other):
-        if isinstance(other, CallInfo):
-            return (
-                self.function_name == other.function_name
-                and self.line == other.line
-                and self.character == other.character
-            )
-        return False
 
 
 def find_node_at_position(file_content, lsp_line_no):
@@ -52,14 +26,6 @@ def extract_code_segment(file_content, node):
 
     lines = file_content.splitlines()
     return "\n".join(lines[start_line - 1 : end_line])
-
-
-def get_module_file_path(module_name):
-    spec = importlib.util.find_spec(module_name)
-    if spec is not None:
-        return spec.origin
-    else:
-        return None
 
 
 def find_function_range(file_uri: str, function_name: str) -> Optional[Range]:
@@ -91,35 +57,6 @@ def find_function_range(file_uri: str, function_name: str) -> Optional[Range]:
         ),  # +4 to account for "def "
         end=Position(line=visitor.span[1] - 1, character=visitor.span[3]),
     )
-
-
-def extract_imports_info(ast_imports: Optional[list[ast.AST]]) -> list[ImportInfo]:
-    """Extracts the file path, module name, line number and character number from an AST Import or ImportFrom node"""
-    imports_info = []
-    for node in ast_imports:
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imports_info.append(
-                    ImportInfo(
-                        file_path=alias.name,
-                        module_name=None,
-                        line=node.lineno - 1,  # -1 to account for 0-indexing
-                        character=node.col_offset + 8,  # +8 to account for "import "
-                    )
-                )
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module
-            for alias in node.names:
-                imports_info.append(
-                    ImportInfo(
-                        file_path=get_module_file_path(module),
-                        module_name=alias.name,
-                        line=node.lineno - 1,  # -1 to account for 0-indexing
-                        character=node.col_offset
-                        + 6,  # +6 to account for "from " and "import "
-                    )
-                )
-    return imports_info
 
 
 def find_all_method_and_function_calls(file_content, target_name) -> set[CallInfo]:
@@ -170,6 +107,17 @@ def find_all_method_and_function_calls(file_content, target_name) -> set[CallInf
     return calls
 
 
+def filter_locations(locations: list[Location]):
+    return [
+        m for m in locations if ".pyenv" not in m.uri and ".virtualenvs" not in m.uri
+    ]
+
+
+#####################################
+######### UNUSED FUNCTIONS ##########
+#####################################
+
+
 def find_top_level_imports_ast(file_content) -> list[ImportInfo]:
     tree = ast.parse(file_content)
     return extract_imports_info(
@@ -181,22 +129,41 @@ def find_top_level_imports_ast(file_content) -> list[ImportInfo]:
     )
 
 
-def find_imports_in_function(file_content, function_name) -> Optional[list[ImportInfo]]:
-    tree = ast.parse(file_content)
-    imports = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == function_name:
-            for n in ast.walk(node):
-                if isinstance(n, (ast.Import, ast.ImportFrom)):
-                    imports.append(extract_imports_info([n]))
-            break
-    return imports
+def get_module_file_path(module_name):
+    spec = importlib.util.find_spec(module_name)
+    if spec is not None:
+        return spec.origin
+    else:
+        return None
 
 
-def filter_locations(locations: list[Location]):
-    return [
-        m for m in locations if ".pyenv" not in m.uri and ".virtualenvs" not in m.uri
-    ]
+def extract_imports_info(ast_imports: Optional[list[ast.AST]]) -> list[ImportInfo]:
+    """Extracts the file path, module name, line number and character number from an AST Import or ImportFrom node"""
+    imports_info = []
+    for node in ast_imports:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports_info.append(
+                    ImportInfo(
+                        file_path=alias.name,
+                        module_name=None,
+                        line=node.lineno - 1,  # -1 to account for 0-indexing
+                        character=node.col_offset + 8,  # +8 to account for "import "
+                    )
+                )
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module
+            for alias in node.names:
+                imports_info.append(
+                    ImportInfo(
+                        file_path=get_module_file_path(module),
+                        module_name=alias.name,
+                        line=node.lineno - 1,  # -1 to account for 0-indexing
+                        character=node.col_offset
+                        + 6,  # +6 to account for "from " and "import "
+                    )
+                )
+    return imports_info
 
 
 def filter_imports(imports: list[ImportInfo]):
