@@ -1,9 +1,11 @@
 from enum import Enum
+from functools import lru_cache
 import json
 from pydantic import BaseModel
 
 
-def read_file_uri(file_uri):
+@lru_cache(maxsize=100)
+def read_file_uri(file_uri: str) -> str:
     file_name = file_uri.replace("file://", "")
     with open(file_name) as f:
         file_content = f.read()

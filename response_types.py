@@ -1,3 +1,4 @@
+import ast
 from typing import List, Optional, Any, Union
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -18,9 +19,33 @@ class HashableBaseModel(BaseModel):
         return False
 
 
+class Position(HashableBaseModel):
+    line: int
+    character: int
+
+
+class Range(HashableBaseModel):
+    start: Position
+    end: Position
+
+
 ##########################################
 ######### AST PARSING TYPES ##############
 ##########################################
+
+
+class VisitedNode(HashableBaseModel):
+    uri: str
+    line: int
+    character: int
+    name: str
+
+
+class NodeInfo(HashableBaseModel):
+    node: Any
+    uri: str
+
+
 class ImportInfo(HashableBaseModel):
     file_path: str
     module_name: Optional[str]
@@ -32,6 +57,12 @@ class CallInfo(HashableBaseModel):
     function_name: str
     line: int
     character: int
+
+
+class ObjectTypes(Enum):
+    FUNCTION = "Function"
+    ASYNC_FUNCTION = "Async Function"
+    CLASS = "Class"
 
 
 ##########################################
@@ -66,16 +97,6 @@ class SymbolKind(Enum):
     Event = 24
     Operator = 25
     TypeParameter = 26
-
-
-class Position(HashableBaseModel):
-    line: int
-    character: int
-
-
-class Range(HashableBaseModel):
-    start: Position
-    end: Position
 
 
 class Location(HashableBaseModel):

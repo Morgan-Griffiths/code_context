@@ -1,3 +1,4 @@
+import ast
 import asyncio
 from typing import Optional
 import websockets
@@ -6,12 +7,14 @@ import os
 import sys
 import uuid
 from response_types import (
+    CallInfo,
     DocumentSymbol,
     FindReferencesResponse,
     DefinitionResponse,
     GoToDeclarationResponse,
     GoToImplementationResponse,
     Location,
+    NodeInfo,
     Range,
     TypeDefinitionResponse,
     TypeDefinitionResponse,
@@ -20,16 +23,20 @@ from response_types import (
     ReferenceParams,
     TextDocument,
     Position,
+    VisitedNode,
 )
 
 from ast_parsing import (
     extract_code_segment,
     find_all_method_and_function_calls,
-    find_function_range,
-    filter_locations,
+    find_function_or_class_range,
+    filter_out_builtins_from_locations,
     find_node_at_position,
+    find_top_level_definitions,
 )
 from utils import read_file_uri, EnhancedJSONEncoder
+
+BREAK_LINE = "\n------------------------------------------------"  # two tokens
 
 
 class LSPWebSocketClient:
@@ -130,54 +137,120 @@ class LSPWebSocketClient:
 
 
 async def get_function_context(
-    client: LSPWebSocketClient, filename: str, function_name: str, depth=1
-):
-    with open(filename, "r") as file:
-        file_content = file.read()
-    # Initial setup: Find function position, etc.
-    text_document = TextDocument(uri=f"file://{filename}")
-    function_range = find_function_range(filename, function_name)
-    if function_range is None:
-        print("Function not found in the file.")
-        sys.exit(1)
-
-    # Step 1: find all the calls inside the function.
-    calls = find_all_method_and_function_calls(file_content, function_name)
-
-    # Step 2: look up all the call definitions.
-    type_definitions = set()
+    client: LSPWebSocketClient,
+    function_or_class_names: list[NodeInfo],
+    visited_nodes: set[VisitedNode],
+    to_print: bool = False,
+) -> list[NodeInfo]:
+    """Given a file and a function or class name, return all the function calls inside of that function or class. Filters for builtins and duplicates."""
+    calls: set[VisitedNode] = set()
+    for node_info in function_or_class_names:
+        fcalls = find_all_method_and_function_calls(node_info)
+        calls.update(fcalls)
+    # if to_print:
+    #     print("calls", calls)
+    # look up all the call definitions and find the relevant nodes.
+    type_definitions: set[NodeInfo] = set()
     for call in calls:
         definition = await client.get_type_definition(
-            text_document,
+            TextDocument(uri=call.uri),
             Position(line=call.line, character=call.character),
         )
+        # if to_print:
+        #     print("definition", definition)
         if definition.result:
             for obj_def in definition.result:
-                type_definitions.add(obj_def)
-    # filter out builtins
-    filtered_type_definitions = filter_locations(type_definitions)
-    # print("filtered_type_definitions", filtered_type_definitions)
-    nodes = [
-        find_node_at_position(read_file_uri(def_.uri), def_.range.start.line)
-        for def_ in filtered_type_definitions
-    ]
+                node = find_node_at_position(
+                    read_file_uri(obj_def.uri),
+                    obj_def.range.start.line,
+                    call.name,
+                )
+                if isinstance(node, ast.Assign):
+                    print("found assign")
+                    print(node.targets[0].id)
+                    print(node.value, type(node.value))
+                    node = None  # node.value
 
-    # Step 3: Given all the nodes, copy the relevant text.
-    code_context = []
-    for node, def_ in zip(nodes, filtered_type_definitions):
-        code_snippet = extract_code_segment(read_file_uri(def_.uri), node)
-        # print(f"{def_}. code_snippet {code_snippet}")
-        code_context.append(
-            def_.uri + "\n------------------" + code_snippet + "------------------"
+                if node is not None:
+                    vnode = VisitedNode(
+                        name=node.name,
+                        line=node.lineno,
+                        character=node.col_offset,
+                        uri=obj_def.uri,
+                    )
+                    if vnode.name == "run":
+                        print("found run")
+                        print(
+                            vnode in visited_nodes,
+                        )
+                        print(vnode)
+                    if vnode not in visited_nodes:
+                        type_definitions.add(NodeInfo(uri=obj_def.uri, node=node))
+                        visited_nodes.add(vnode)
+    filtered_type_definitions = filter_out_builtins_from_locations(type_definitions)
+    return filtered_type_definitions
+
+
+async def get_depth_n_code_context(
+    client: LSPWebSocketClient,
+    function_or_class_names: list[NodeInfo],
+    depth: int,
+):
+    # record the target nodes as visited
+    visited_nodes: set[VisitedNode] = {
+        VisitedNode(
+            name=n.node.name, uri=n.uri, line=n.node.lineno, character=n.node.col_offset
         )
+        for n in function_or_class_names
+    }
+    # print("\n\nvisited_nodes\n\n", visited_nodes)
+    # add target nodes to call list
+    function_calls: list[NodeInfo] = function_or_class_names
+    # print("function_calls", function_calls)
+    # Step 1: find all the calls inside the function(s).
+    inner_function_calls = await get_function_context(
+        client, function_or_class_names, visited_nodes
+    )
+    # print("\n\nvisited_nodes\n\n", visited_nodes)
+    # print([f.node.name for f in function_calls if "run" in f.node.name])
+    # print("inner_function_calls", inner_function_calls)
+    function_calls.extend(inner_function_calls)
+    # Step 2: (Optional) recursively find all the sub-function calls.
+    for _ in range(depth - 1):
+        depth_n_function_calls = []
+        for node_info in function_calls:
+            inner_function_calls = await get_function_context(
+                client,
+                [node_info],
+                visited_nodes,
+                to_print=True,
+            )
+            depth_n_function_calls.extend(inner_function_calls)
+        function_calls.extend(depth_n_function_calls)
+    # Step 3: Given all the nodes and file paths, copy the relevant text.
+
+    # print([f.node.name for f in function_calls if "run" in f.node.name])
+    code_context = []
+    for node_info in function_calls:
+        code_snippet = extract_code_segment(
+            read_file_uri(node_info.uri), node_info.node
+        )
+        code_context.append(node_info.uri + "\n" + code_snippet + BREAK_LINE)
 
     return code_context
+
+
+async def get_file_context(client: LSPWebSocketClient, filename: str, depth: int):
+    # Step 1: Find all the functions and classes in the file.
+    top_level_definitions = find_top_level_definitions(filename)
+    # Step 2: Iterate through all the functions and classes. Find external references.
+    return await get_depth_n_code_context(client, top_level_definitions, depth=depth)
 
 
 URI = "ws://0.0.0.0:2087"
 
 
-async def main(filename, function_name):
+async def main(filename, function_or_class_name, depth):
     try:
         # Instantiate the lsp client
         client = LSPWebSocketClient(URI)
@@ -186,29 +259,33 @@ async def main(filename, function_name):
         if not os.path.exists(filename):
             print("File does not exist.")
             sys.exit(1)
-        if function_name:
-            context = await get_function_context(client, filename, function_name)
-            # save to file
-            with open("code_context.txt", "w") as file:
-                file.write("\n\n".join(context))
+        if function_or_class_name:
+            # Initial setup: Find function position, etc.
+            node_info = find_function_or_class_range(filename, function_or_class_name)
+            if node_info is None:
+                print("Function or class not found in the file.")
+                sys.exit(1)
 
+            context = await get_depth_n_code_context(client, [node_info], depth=depth)
         else:
-            print("Function name not provided.")
+            # Get context for all the functions and classes in the file
+            context = await get_file_context(client, filename, depth=depth)
+        context = "\n\n".join(context)
+        print(context)
     finally:
         await client.close()
 
 
 if __name__ == "__main__":
-    """Usage: python lsp_client.py <filename>::<function_name>"""
+    """Usage: python lsp_client.py <filename>::<function_or_class_name>"""
     import sys
 
     user_input = sys.argv[1]
-    filename, function_name = user_input.split("::")
-    asyncio.run(main(filename, function_name))
+    depth = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    if "::" in user_input:
+        filename, function_or_class_name = user_input.split("::")
+    else:
+        filename = user_input
+        function_or_class_name = None
 
-    # Testing
-    # filename = (
-    #     "/Users/morgangriffiths/code/openai/torchflow/torchflow/layouts/pipe_layout.py"
-    # )
-    # node = find_node_at_position(filename, 723)
-    # print(f"{node}, {dir(node)}, {node.name}")
+    asyncio.run(main(filename, function_or_class_name, depth))

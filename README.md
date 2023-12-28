@@ -18,8 +18,17 @@ Get the code context for a function
 
 This will return a concatenated string of all relevant code snippets. This can be saved to file or piped to another function.
 
-## Example
+3. Optionally
+
+make an alias for the lsp client `alias lsp="python lsp_client.py"`
 
 Get the code context for a function and add a prompt, then pipe it to GPT.
+`(lsp <file_path>::<function_name> && <prompt>) | <function>`
 
-`(python lsp_client.py test.py::test && "add another test") | gpt`
+Or save the output to file.
+`(lsp <file_path>::<function_name> && <prompt>) > <file>`
+
+## Example
+
+Example:
+`(lsp test.py::test && "add another test") | gpt`
