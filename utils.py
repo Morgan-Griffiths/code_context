@@ -17,5 +17,5 @@ class EnhancedJSONEncoder(json.JSONEncoder):
         if isinstance(o, Enum):
             return o.value  # Convert Enum to its value
         if isinstance(o, BaseModel):
-            return o.dict(by_alias=True)
+            return o.model_dump(by_alias=True)
         return super().default(o)

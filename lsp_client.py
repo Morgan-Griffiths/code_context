@@ -73,7 +73,7 @@ class LSPWebSocketClient:
             "textDocument/declaration",
             {"textDocument": text_document, "position": position},
         )
-        return GoToDeclarationResponse(**response)
+        return GoToDeclarationResponse.model_validate(response)
 
     async def get_type_definition(
         self, text_document: TextDocument, position: Position
@@ -82,7 +82,7 @@ class LSPWebSocketClient:
             "textDocument/typeDefinition",
             {"textDocument": text_document, "position": position},
         )
-        return TypeDefinitionResponse(**response)
+        return TypeDefinitionResponse.model_validate(response)
 
     async def go_to_implementation(
         self, text_document: TextDocument, position: Position
@@ -91,7 +91,7 @@ class LSPWebSocketClient:
             "textDocument/implementation",
             {"textDocument": text_document, "position": position},
         )
-        return GoToImplementationResponse(**response)
+        return GoToImplementationResponse.model_validate(response)
 
     async def get_references(self, text_document: TextDocument, position: Position):
         """ """
@@ -104,7 +104,7 @@ class LSPWebSocketClient:
             "textDocument/references",
             params,
         )
-        return FindReferencesResponse(**response)
+        return FindReferencesResponse.model_validate(response)
 
     async def get_document_symbol(
         self, filename: str
@@ -114,7 +114,7 @@ class LSPWebSocketClient:
             "textDocument/documentSymbol",
             {"textDocument": text_document},
         )
-        return DocumentSymbolResponse(**response).result
+        return DocumentSymbolResponse.model_validate(response).result
 
     async def get_definition(
         self, text_document: TextDocument, position: Position
@@ -123,7 +123,7 @@ class LSPWebSocketClient:
             "textDocument/definition",
             {"textDocument": text_document, "position": position},
         )
-        return DefinitionResponse(**response)
+        return DefinitionResponse.model_validate(response)
 
     async def get_completion(self, text_document: TextDocument, position: Position):
         response = await self.send_request(
@@ -137,15 +137,12 @@ async def get_function_context(
     client: LSPWebSocketClient,
     function_or_class_names: list[NodeInfo],
     visited_nodes: set[VisitedNode],
-    to_print: bool = False,
 ) -> list[NodeInfo]:
     """Given a file and a function or class name, return all the function calls inside of that function or class. Filters for builtins and duplicates."""
     calls: set[VisitedNode] = set()
     for node_info in function_or_class_names:
         fcalls = find_all_method_and_function_calls(node_info)
         calls.update(fcalls)
-    # if to_print:
-    #     print("calls", calls)
     # look up all the call definitions and find the relevant nodes.
     type_definitions: set[NodeInfo] = set()
     for call in calls:
@@ -153,8 +150,6 @@ async def get_function_context(
             TextDocument(uri=call.uri),
             Position(line=call.line, character=call.character),
         )
-        # if to_print:
-        #     print("definition", definition)
         if definition.result:
             for obj_def in definition.result:
                 node = find_node_at_position(
@@ -175,12 +170,6 @@ async def get_function_context(
                         character=node.col_offset,
                         uri=obj_def.uri,
                     )
-                    if vnode.name == "run":
-                        print("found run")
-                        print(
-                            vnode in visited_nodes,
-                        )
-                        print(vnode)
                     if vnode not in visited_nodes:
                         type_definitions.add(NodeInfo(uri=obj_def.uri, node=node))
                         visited_nodes.add(vnode)
@@ -200,17 +189,12 @@ async def get_depth_n_code_context(
         )
         for n in function_or_class_names
     }
-    # print("\n\nvisited_nodes\n\n", visited_nodes)
     # add target nodes to call list
     function_calls: list[NodeInfo] = function_or_class_names
-    # print("function_calls", function_calls)
     # Step 1: find all the calls inside the function(s).
     inner_function_calls = await get_function_context(
         client, function_or_class_names, visited_nodes
     )
-    # print("\n\nvisited_nodes\n\n", visited_nodes)
-    # print([f.node.name for f in function_calls if "run" in f.node.name])
-    # print("inner_function_calls", inner_function_calls)
     function_calls.extend(inner_function_calls)
     # Step 2: (Optional) recursively find all the sub-function calls.
     for _ in range(depth - 1):
@@ -220,13 +204,11 @@ async def get_depth_n_code_context(
                 client,
                 [node_info],
                 visited_nodes,
-                to_print=True,
             )
             depth_n_function_calls.extend(inner_function_calls)
         function_calls.extend(depth_n_function_calls)
     # Step 3: Given all the nodes and file paths, copy the relevant text.
 
-    # print([f.node.name for f in function_calls if "run" in f.node.name])
     code_context = []
     for node_info in function_calls:
         code_snippet = extract_code_segment(
