@@ -1,7 +1,6 @@
 import ast
 from typing import Optional
 from response_types import (
-    CallInfo,
     ImportInfo,
     Range,
     Position,

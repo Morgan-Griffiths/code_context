@@ -7,15 +7,12 @@ import os
 import sys
 import uuid
 from response_types import (
-    CallInfo,
     DocumentSymbol,
     FindReferencesResponse,
     DefinitionResponse,
     GoToDeclarationResponse,
     GoToImplementationResponse,
-    Location,
     NodeInfo,
-    Range,
     TypeDefinitionResponse,
     TypeDefinitionResponse,
     DocumentSymbolResponse,

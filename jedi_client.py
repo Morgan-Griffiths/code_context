@@ -16,6 +16,7 @@ class LanguageServerClient:
             if root_dir
             else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         )
+        print(f"Running jedi client in {self.root_dir}")
 
     async def initialize(self):
         self.jedi_server_process = subprocess.Popen(
@@ -59,8 +60,8 @@ async def lsp_server():
         await lsp.close()
 
 
-async def main():
-    lsp = LanguageServerClient()
+async def main(root_dir):
+    lsp = LanguageServerClient(root_dir)
     try:
         await lsp.initialize()
         # Create an event that will be set when the program should terminate.
