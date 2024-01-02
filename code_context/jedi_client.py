@@ -59,7 +59,7 @@ async def lsp_server():
         await lsp.close()
 
 
-async def main(root_dir):
+async def run_jedi(root_dir):
     lsp = LanguageServerClient(root_dir)
     try:
         await lsp.initialize()
@@ -80,8 +80,3 @@ async def main(root_dir):
         # Handle any exceptions during initialization or runtime.
         print(f"An error occurred: {e}")
         await lsp.close()
-
-
-if __name__ == "__main__":
-    root_dir = sys.argv[1] if len(sys.argv) > 1 else None
-    asyncio.run(main(root_dir))
