@@ -26,26 +26,26 @@ The output looks like the following:
 
 ## Usage
 
-1. Start the jedi client. Optionally add the root directory of the project you want to analyze as an argument. Otherwise it will point to the current directory.
+1. Start the jedi client in a separate terminal tab. Optionally add the root directory of the project you want to analyze as an argument. Otherwise it will point to the current directory.
 
-`python jedi_client.py <root_dir>`
+`python main.py start-jedi <root_dir>`
 
 2. Query the lsp client
 
 Get the code context for an entire file
-`python lsp_client.py <file_path>`
+`python main.py lsp <file_path>`
 
 Get the code context for a function
-`python lsp_client.py <file_path>::<function_name>`
+`python main.py lsp <file_path>::<function_name>`
 
-This will return a concatenated string of all relevant code snippets. This can be saved to file or piped to another function.
+Increase the depth (int) for more context (default is 1)
+`python main.py lsp <file_path>::<function_name> <depth>`
 
-Increase the depth for more context (default is 1)
-`python lsp_client.py <file_path>::<function_name> <depth>`
+These will send to stdout a concatenated string of all relevant code snippets.
 
 3. Optionally
 
-make an alias for the lsp client `alias lsp="python lsp_client.py"`
+make an alias for the lsp client `alias lsp="python path/to/main.py lsp"`
 
 4. Composition
 
