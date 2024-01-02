@@ -38,9 +38,14 @@ Get the code context for a function
 
 This will return a concatenated string of all relevant code snippets. This can be saved to file or piped to another function.
 
+Increase the depth for more context (default is 1)
+`python lsp_client.py <file_path>::<function_name> <depth>`
+
 3. Optionally
 
 make an alias for the lsp client `alias lsp="python lsp_client.py"`
+
+4. Composition
 
 Get the code context for a function and add a prompt, then pipe it to GPT.
 `(lsp <file_path>::<function_name> && <prompt>) | <function>`
@@ -48,11 +53,6 @@ Get the code context for a function and add a prompt, then pipe it to GPT.
 Or save the output to file.
 `lsp <file_path>::<function_name> > <file>`
 
-4. Pipe output to GPT via the commandline (requires a GPT commandline tool such as https://github.com/Morgan-Griffiths/commandline_gpt)
+5. Pipe output to GPT via the commandline (requires a GPT commandline tool such as https://github.com/Morgan-Griffiths/commandline_gpt)
 
-`(lsp path_to_python_fie.py 1 && "Can you explain what this code does?") | g`
-
-## Example
-
-Example:
-`(lsp test.py::test && "add another test") | g`
+`(lsp path_to_python_fie.py && echo "Can you explain what this code does?") | g`
