@@ -1,13 +1,13 @@
 import ast
 import os
 from typing import Optional
-from ast_parsing import (
+from code_context.ast_parsing import (
     extract_imports_info,
     filter_imports,
     find_top_level_imports_ast,
 )
-from lsp_client import LSPWebSocketClient
-from response_types import (
+from code_context.lsp_client import LSPWebSocketClient
+from code_context.response_types import (
     DocumentSymbol,
     ImportInfo,
     Location,
