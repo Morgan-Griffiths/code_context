@@ -1,10 +1,9 @@
 import ast
-import asyncio
+import os
+import sys
 from typing import Optional
 import websockets
 import json
-import os
-import sys
 import uuid
 from code_context.response_types import (
     DocumentSymbol,
@@ -23,7 +22,7 @@ from code_context.response_types import (
     VisitedNode,
 )
 
-from ast_parsing import (
+from code_context.ast_parsing import (
     extract_code_segment,
     find_all_method_and_function_calls,
     find_function_or_class_range,
@@ -207,8 +206,10 @@ async def get_depth_n_code_context(
             )
             depth_n_function_calls.extend(inner_function_calls)
         function_calls.extend(depth_n_function_calls)
+    # Reversing the the context in order to have the original source code at the bottom.
+    # This is better for GPT since it will see the code from child to parent.
+    function_calls.reverse()
     # Step 3: Given all the nodes and file paths, copy the relevant text.
-
     code_context = []
     for node_info in function_calls:
         code_snippet = extract_code_segment(
@@ -229,7 +230,7 @@ async def get_file_context(client: LSPWebSocketClient, filename: str, depth: int
 URI = "ws://0.0.0.0:2087"
 
 
-async def main(filename, function_or_class_name, depth):
+async def call_lsp(filename, function_or_class_name, depth):
     try:
         # Instantiate the lsp client
         client = LSPWebSocketClient(URI)
@@ -249,23 +250,7 @@ async def main(filename, function_or_class_name, depth):
         else:
             # Get context for all the functions and classes in the file
             context = await get_file_context(client, filename, depth=depth)
-        # Reversing the the context in order to have the original source code at the bottom.
-        context = "\n\n".join(reversed(context))
+        context = "\n\n".join(context)
         print(context)
     finally:
         await client.close()
-
-
-if __name__ == "__main__":
-    """Usage: python lsp_client.py <filename>Optional[::<function_or_class_name>] Optional[<depth>]"""
-    import sys
-
-    user_input = sys.argv[1]
-    depth = int(sys.argv[2]) if len(sys.argv) > 2 else 1
-    if "::" in user_input:
-        filename, function_or_class_name = user_input.split("::")
-    else:
-        filename = user_input
-        function_or_class_name = None
-
-    asyncio.run(main(filename, function_or_class_name, depth))
