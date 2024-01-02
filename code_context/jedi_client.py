@@ -22,7 +22,6 @@ class LanguageServerClient:
         self.jedi_server_process = subprocess.Popen(
             ["jedi-language-server", "--ws"],
         )
-
         # Wait for the server to start
         await asyncio.sleep(1)
         self.uri = "ws://localhost:2087"

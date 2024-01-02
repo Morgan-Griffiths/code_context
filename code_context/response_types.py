@@ -7,11 +7,11 @@ class HashableBaseModel(BaseModel):
     """Base class for pydantic models that can be hashed and compared"""
 
     def __hash__(self):
-        return hash((self.__class__,) + tuple(self.__fields__.values()))
+        return hash((self.__class__,) + tuple(self.model_fields.values()))
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
-            for field in self.__fields__:  # type: ignore
+            for field in self.model_fields:  # type: ignore
                 if getattr(self, field) != getattr(other, field):
                     return False
             return True
@@ -178,7 +178,7 @@ class ReferenceParams(BaseModel):
     context: ReferenceContext
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class GoToImplementationResponse(BaseModel):

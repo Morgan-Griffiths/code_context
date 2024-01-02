@@ -1,0 +1,247 @@
+file:///Users/morgangriffiths/code/openai/torchflow/trainflow/model_loader.py
+def build_root_config(
+    config_path: str,
+    # additional torchflow flags to set, as a dictionary
+    # like {"attr.subattr": value}
+    # these will override anything except for args
+    # should begin with `run_config.` if they are meant to refer to the run_config or nested attributes of the run_config
+    replacements: Optional[dict[str, Any]] = None,
+    # additional torchflow flags, as a list of k=v pairs
+    # (often supplied on the command line)
+    # these override everything
+    args: Optional[list[str]] = None,
+) -> RootConfig:
+    """
+    Build a RootConfig
+    """
+    if replacements is None:
+        replacements = {}
+    if args is None:
+        args = []
+    # apply the args and replacements twice, in case any logic depends on the values
+    rc = make_run_config(
+        args=args,
+        replacements={
+            k[len("run_config.") :]: v
+            for k, v in replacements.items()
+            if k.startswith("run_config.")
+        },
+        default_name=config_path,
+    )
+    rc = apply_finetuning_default_options(rc)
+    if rc.cluster == "owl" or (
+        rc.cluster == "local" and os.environ.get("RCALL_KUBE_CLUSTER", "") == "owl"
+    ):
+        replacements.setdefault("run_config.pin_cpus_per_worker", 10)
+        replacements.setdefault("run_config.pin_workers_to_cpus", False)
+        replacements.setdefault("run_config.enable_passive_checks", False)
+
+    return make_root_config_compat(args=args, default_config=rc, replacements=replacements)
+------------------------------------------------
+
+file:///Users/morgangriffiths/code/openai/torchflow/trainflow/model_loader.py
+def load_model_and_run(
+    run_config: str,
+    *,
+    callback: Callable,
+    load_path: Optional[str],
+    checkpoint_dir: Optional[str] = None,
+    pipe_depth: Optional[int] = None,
+    n_op_shards: Optional[int] = None,
+    args: Optional[list[str]] = None,
+) -> RunConfig:
+    """
+    Mainly for backwards compatibility with model_loader
+    """
+    replacements = {
+        "run_config.train_loop_callable": (get_func_path(callback), {}),
+        "run_config.timeout.create_model_timeout": 100000,
+        "run_config.n_replicas": 1,
+        "run_config.dedicated_optim": False,
+        "run_config.step_optim_inline": False,
+        "run_config.sync_grads_inline": False,
+        "run_config.load_finetune": load_path,
+        "run_config.enable_checkpoint_saving_hook": False,
+        "run_config.mode": "distmodel_sync_engine",
+        "run_config.discover_checkpoint_from_snowflake": False,
+        # this doesn't work since if there is an error, the run returns success
+        # "exit_on_crash": True,
+        "run_config.ray_settings.recover_from_worker_failure": False,
+        "deduplicate_ray_logs": False,
+        "run_config.model_config.use_gpt4_moe_settings": True,
+    }
+    if checkpoint_dir is not None:
+        replacements["run_config.checkpoint_dir"] = checkpoint_dir
+    if pipe_depth is not None:
+        replacements["run_config.pipe_depth"] = pipe_depth
+    if n_op_shards is not None:
+        replacements["run_config.n_op_shards"] = n_op_shards
+
+    root_config = build_root_config(
+        config_path=run_config,
+        replacements=replacements,
+        args=args,
+    )
+    populated_root_config = root_config.populated(recursive=True)
+    populated_root_config.validate()
+    launch_run(populated_root_config)
+    return populated_root_config
+------------------------------------------------
+
+file:///Users/morgangriffiths/code/openai/torchflow/falcon/model_config.py
+    def validate(self) -> None:
+        if not self._populated:
+            return
+
+        for run_config in self.run_configs:
+            run_config.validate()
+------------------------------------------------
+
+file:///Users/morgangriffiths/code/openai/torchflow/trainflow/finetuning.py
+def apply_finetuning_default_options(rc: RunConfig) -> RunConfig:
+    """
+    Given a pretraining RunConfig, set all flags we need unconditionally for finetuning
+    """
+    return ez_replace(
+        rc,
+        {
+            "n_replicas": 1,
+            "checkpoint_interval": int(3e10),  # ~1k years, so effectively never
+            # Numerical stability
+            "actclip": 10000,
+            "actclip_infs": True,
+            "backclip": True,
+            "restore_loss_scale": False,
+            "hyperparam_manager.batch_ramp": False,
+            "discover_checkpoint_from_snowflake": False,
+            "enable_snowflake_hook": False,
+            "enable_determinism_check": False,
+            "enable_recompute_checker": False,
+            "enable_slow_replica_detection": False,
+            # Useful for preventing OOMs/timeouts with large models (eg: 52B)
+            "tensorcache_config.download_to_local_cache": False,
+            "tensorcache_config.local_cache_dir": "/tmp/tensorcache",
+            "cpu_shuttle_buffer_size": 268435456,
+            "timeout.create_model_timeout": 60 * 20,
+            "timeout.download_checkpoint_timeout": 60 * 20,
+            "timeout.upload_checkpoint_timeout": 60 * 20,
+            "eval_datasets": "",
+            "infrequent_eval_datasets": "",
+            "final_eval_datasets": "",
+            "eval_interval": 1,
+            # no reason to use the seed from the checkpoint
+            "seed": 42,
+            "dataset_seed": 42,
+            "mode": "distmodel_sync_engine",
+        },
+    )
+------------------------------------------------
+
+file:///Users/morgangriffiths/code/openai/torchflow/trainflow/cli.py
+def launch_run(run_config: Union[RootConfig, RunConfig]) -> None:
+    if isinstance(run_config, RunConfig):
+        root_config = make_root_config_compat([], default_config=run_config)
+        root_config = root_config.populated(recursive=True)
+    else:
+        assert isinstance(run_config, RootConfig)
+        root_config = run_config
+
+    assert isinstance(root_config, RootConfig)
+    if root_config.run_configs[0].cluster == "local":
+        trainflow.train.run(root_config)
+    else:
+        launch_runs([root_config])
+------------------------------------------------
+
+file:///Users/morgangriffiths/code/openai/torchflow/falcon/model_config.py
+def make_root_config_compat(
+    args: list[str],
+    default_config: Optional[RunConfig] = None,
+    default_name: Optional[str] = None,
+    replacements: Optional[dict[str, Any]] = None,
+) -> RootConfig:
+    """Used for interfaces such as CLI args that expect to pass a flat list of configs
+    that do not differentiate between RootConfig and RunConfig
+    """
+    assert not isinstance(args, str), "args should be a list of strings"
+
+    if replacements is None:
+        replacements = {}
+
+    # First parse out run configs
+    run_configs = make_run_configs(
+        args=args,
+        replacements={
+            k[len("run_config.") :]: v
+            for k, v in replacements.items()
+            if k.startswith("run_config.")
+        },
+        default_name=default_name,
+        default_config=default_config,
+        allow_invalid_args=True,
+    )
+    extra_run_args: defaultdict[str, set[str]] = defaultdict(set)
+    for r in run_configs:
+        if r.invalid_args:
+            for arg, suggestions in r.invalid_args.items():
+                extra_run_args[arg] |= set(suggestions)
+            r.invalid_args = None
+
+    # Next parse out root configs
+    root_config = make_root_config(
+        args=args,
+        default_name=default_name,
+        replacements={k: v for k, v in replacements.items() if not k.startswith("run_config.")},
+    )
+    if root_config.invalid_args:
+        extra_root_args = root_config.invalid_args
+        root_config.invalid_args = None
+    else:
+        extra_root_args = dict()
+
+    # If there were any args specified that aren't used in either config, report
+    unknown_args = set(extra_run_args.keys()) & set(extra_root_args.keys())
+    if unknown_args:
+        errors = ["Unsupported config keys:"]
+        for u in unknown_args:
+            prefix = f"- {colorize(repr(u), 'red')} "
+            candidates = " ".join(extra_run_args[u] | set(extra_root_args[u]))
+            if candidates:
+                errors.append(f"{prefix}(similar keys: {candidates} ?)")
+            else:
+                errors.append(f"{prefix}(no similar keys found)")
+        raise ConfigError("\n".join(errors))
+
+    # Assemble final config
+    root_config.run_configs = run_configs
+    for r in run_configs:
+        if r.name is not None:
+            r.prefixed_name = root_config.name_prefix + r.name
+
+    if default_config is not None:
+        # For any field that's 'inherited'/duplicated between the run & root configs
+        # match root_config to default_config
+        for fld in fields(default_config):
+            if hasattr(root_config, fld.name):
+                setattr(root_config, fld.name, getattr(default_config, fld.name))
+
+    return root_config
+------------------------------------------------
+
+file:///Users/morgangriffiths/code/openai/torchflow/falcon/model_config.py
+    def populated(self, recursive: bool = False):
+        if recursive:
+            return replace(
+                self,
+                _populated=True,
+                run_configs=[r.populated() for r in self.run_configs],
+            )
+        return replace(self, _populated=True)
+------------------------------------------------
+
+file:///Users/morgangriffiths/code/openai/torchflow/falcon/model_config.py
+def make_run_config(*args, **kwargs) -> RunConfig:
+    run_configs = make_run_configs(*args, **kwargs)
+    assert len(run_configs) == 1
+    return run_configs[0]
+------------------------------------------------

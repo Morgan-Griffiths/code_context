@@ -1,6 +1,6 @@
 import ast
 from typing import Optional
-from response_types import (
+from code_context.response_types import (
     ImportInfo,
     Range,
     Position,
@@ -10,7 +10,7 @@ from response_types import (
 import builtins
 import importlib.util
 
-from utils import read_file_uri
+from code_context.utils import read_file_uri
 
 
 def get_builtin_methods_for_types(*types) -> set[str]:
@@ -285,13 +285,3 @@ def extract_imports_info(ast_imports: Optional[list[ast.AST]]) -> list[ImportInf
                     )
                 )
     return imports_info
-
-
-def filter_imports(imports: list[ImportInfo]):
-    return [
-        m
-        for m in imports
-        if ".pyenv" not in m.file_path
-        and ".virtualenvs" not in m.file_path
-        and m.module_name is not None
-    ]

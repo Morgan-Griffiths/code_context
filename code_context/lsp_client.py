@@ -6,7 +6,7 @@ import json
 import os
 import sys
 import uuid
-from response_types import (
+from code_context.response_types import (
     DocumentSymbol,
     FindReferencesResponse,
     DefinitionResponse,
@@ -31,7 +31,7 @@ from ast_parsing import (
     find_node_at_position,
     find_top_level_definitions,
 )
-from utils import read_file_uri, EnhancedJSONEncoder
+from code_context.utils import read_file_uri, EnhancedJSONEncoder
 
 BREAK_LINE = "\n------------------------------------------------"  # two tokens
 
