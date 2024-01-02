@@ -1,10 +1,10 @@
 # Code Context Extractor for python
 
-This is a tool that leverages LSP and AST parsing to extract relevant python code snippets given a file. Optionally given a function name inside that file. It is intended to be used with GPT.
+This is a tool that leverages LSP and AST parsing to extract relevant python code snippets given a file and optionally a function name in that file. It is intended to be used with ChatGPT.
 
 ## Current limitations
 
-Only parses Classes and functions. Does not parse assignments, or non-function attributes. Only parses content inside functions.
+Only parses classes and functions. Does not parse assignments, or non-function class attributes. Only parses content inside functions.
 
 ## Output Format
 
@@ -46,11 +46,11 @@ Get the code context for a function and add a prompt, then pipe it to GPT.
 `(lsp <file_path>::<function_name> && <prompt>) | <function>`
 
 Or save the output to file.
-`(lsp <file_path>::<function_name> && <prompt>) > <file>`
+`lsp <file_path>::<function_name> > <file>`
 
-4. pair with commandline gpt
+4. Pipe output to GPT via the commandline (requires a GPT commandline tool such as https://github.com/Morgan-Griffiths/commandline_gpt)
 
-`(lsp path_to_python_fie.py 1 ; echo "Can you explain what this code does?") | g`
+`(lsp path_to_python_fie.py 1 && "Can you explain what this code does?") | g`
 
 ## Example
 

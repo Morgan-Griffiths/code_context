@@ -249,14 +249,15 @@ async def main(filename, function_or_class_name, depth):
         else:
             # Get context for all the functions and classes in the file
             context = await get_file_context(client, filename, depth=depth)
-        context = "\n\n".join(context)
+        # Reversing the the context in order to have the original source code at the bottom.
+        context = "\n\n".join(reversed(context))
         print(context)
     finally:
         await client.close()
 
 
 if __name__ == "__main__":
-    """Usage: python lsp_client.py <filename>::<function_or_class_name>"""
+    """Usage: python lsp_client.py <filename>Optional[::<function_or_class_name>] Optional[<depth>]"""
     import sys
 
     user_input = sys.argv[1]
