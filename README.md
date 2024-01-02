@@ -8,7 +8,9 @@ Only parses classes and functions. Does not parse assignments, or non-function c
 
 ## Output Format
 
-The output is a concatenated string of all relevant code snippets. The code snippets are ordered by depth, starting at depth 0 - given function(s) return all called functions and classes that are defined outside the function. This is followed by depth 1 - all functions and classes that are defined inside the functions returned in depth 0. And so on up to arbitrary depth. The output looks like the following:
+The output is a concatenated string of all relevant code snippets. The code snippets are ordered by depth, starting from the bottom of the file at depth 0 - given function(s) return all called functions and classes that are defined outside the function. This is followed by depth N-1 - all functions and classes that are defined inside the functions returned in depth 1. And so on up to arbitrary depth. The ordering is reversed so that GPT see's the children function definitions prior to the parent function definition.
+
+The output looks like the following:
 
 ```
 <file_uri>
