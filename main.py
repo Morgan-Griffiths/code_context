@@ -39,8 +39,8 @@ def start_jedi(root_dir):
     """
     Start the Jedi client.
     """
-
-    root_dir = sys.argv[1] if len(sys.argv) > 1 else None
+    print(sys.argv)
+    root_dir = sys.argv[2] if len(sys.argv) > 2 else None
     asyncio.run(run_jedi(root_dir))
 
 
